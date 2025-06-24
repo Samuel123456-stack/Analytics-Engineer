@@ -10,7 +10,9 @@
 
 --Objetivo: Esquematizar uma estrutura de alta flexibilidade, provisionando um grau de liberdade ao cliente em alocar atributos
 --categóricos e quantitativos em diferentes quadrantes, simulando uma planilha dinâmica em virtude das transposições em formato
---de (linha, coluna)
+--de (linha, coluna), facilitar a personalização dos templates.
+
+--Clientes: Indústrias do ramo alimentício.
 
 --TECNOLOGIAS UTILIZADAS
 
