@@ -281,7 +281,7 @@ EXEC sp_executesql @sql_final
 --Descrição: Este cenário apresenta a média de tempo que cada usuário executa a critica, considerando o ciclo e o tipo de canal,
   --podendo ser agrupado a soma de tempo por perfil.
 
-CREATE TABLE [dimensao].[Critica_Executor_Historico](
+CREATE TABLE [dimensao].[critica_executor_historico](
 	[sk_critica_historico] [int] IDENTITY(1,1) NOT NULL,
 	[id_ciclo_processo] [int] NOT NULL,
 	[id_hierarquia_comercial] [int] NOT NULL,
@@ -296,11 +296,12 @@ CREATE TABLE [dimensao].[Critica_Executor_Historico](
 PRIMARY KEY CLUSTERED 
 (
 	[sk_critica_historico] ASC
-)
+) WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
 
 --Query para popular tabela abaixo
 
-INSERT INTO dimensao.Critica_Executor_Historico
+INSERT INTO dimensao.critica_executor_historico
 SELECT
 	ch.cicloProcessoId,
 	hc.Id [id_hierarquia_comercial],
@@ -605,7 +606,7 @@ AND c.Id = @checa_canal_id
 --com o usuário administrador), a meta criticada (meta onde hierarquia do cliente adicionou o ajuste na retirada e alocação dos valores)
 --e valores do histórico relacionados à mesma abertura que o cálculo usou no desdobramento.
 
-CREATE TABLE [dimensao].[Desdobramento_Hierarquia_Meta](
+CREATE TABLE [dimensao].[desdobramento_hierarquia_meta](
 	[sk_critica_desd] [int] IDENTITY(1,1) NOT NULL, --chave surrogada (artificial)
 	[id_ciclo_processo] [int] NOT NULL, --código identificador do ciclo
 	[id_meta] [int] NOT NULL, --código identificador da meta
@@ -623,8 +624,11 @@ CREATE TABLE [dimensao].[Desdobramento_Hierarquia_Meta](
 PRIMARY KEY CLUSTERED 
 (
 	[sk_critica_desd] ASC
-)
+) WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
 
+--Query que popula tabela abaixo
+	
 SELECT
 	  cd.CicloProcessoId,
 	  mc.Id [id_meta],
@@ -724,17 +728,17 @@ GROUP BY
 ------------------------------------------------------------------------------------------------------------------
 
 CREATE TABLE [Scenario].[comparativo_meta_planejada](
-	[CicloProcessoId] int NOT NULL,
-	[cod_sku] varchar(50) NOT NULL,
-	[canal_distribuicao] varchar(100) NULL,
-	[regional] varchar(100) NULL,
-	[filial] varchar(100) NULL,
-	[meta] float NOT NULL,
-	[desdobramento] float NOT NULL,
-	[vlr_critica_1] float NULL,
-	[vlr_critica_2] float NULL,
-	[vlr_critica_3] float NULL,
-	[vlr_critica_5] float NULL,
+	[CicloProcessoId] int NOT NULL, --Id do ciclo de vendas
+	[cod_sku] varchar(50) NOT NULL, --Código do produto/material
+	[canal_distribuicao] varchar(100) NULL, --Nome do canal de distribuição logística
+	[regional] varchar(100) NULL, --Nome da regional
+	[filial] varchar(100) NULL, --Nome da filial
+	[meta] float NOT NULL, --Meta final calculada
+	[desdobramento] float NOT NULL, --Desdobramento da meta entre cliente/sku
+	[vlr_critica_1] float NULL, --Valor criticado pelo nivel 1 da hierarquia
+	[vlr_critica_2] float NULL, --Valor criticado pelo nivel 2 da hierarquia
+	[vlr_critica_3] float NULL, --Valor criticado pelo nivel 3 da hierarquia
+	[vlr_critica_5] float NULL, --Valor criticado pelo nivel 4 da hierarquia
 	[% meta_hierarquia] varchar(31) NULL,
 	[% meta_hierarquia2] varchar(31) NULL,
 	[% meta_hierarquia3] varchar(31) NULL,
@@ -760,6 +764,7 @@ SELECT
     CONVERT(varchar, CAST(f.vlr_critica_3 / MIN(d.vlr_meta) * 100.00 AS decimal(5,2))) + '%' AS [% meta_hierarquia3],
 	  CONVERT(varchar, CAST(f.vlr_critica_5 / MIN(d.vlr_meta) * 100.00 AS decimal(5,2))) + '%' AS [% meta_hierarquia5]
 FROM dimensao.desdobramento_hierarquia_meta d
+WHERE d.id_ciclo_processo = ?
 JOIN fatos.meta_criticada f
 ON
 	d.sk_critica_desd = f.sk_desd_meta
@@ -768,10 +773,247 @@ GROUP BY
 	  d.cod_sku,
 	  d.canal_dist,
 	  d.regional,
-	  REPLACE(RIGHT(d.filial, LEN(d.filial) - CHARINDEX('-', d.filial)), '', ''),
+	  d.filial,
 	  d.vlr_meta,
 	  f.desdobramento,
 	  f.vlr_critica_1,
 	  f.vlr_critica_2,
 	  f.vlr_critica_3,
 	  f.vlr_critica_5
+
+---------------------------------------------------------------------------------------
+
+--CENÁRIO 3: **Filtros utilizados durante a critica por usuários**
+--Descrição: Este cenário apresenta os nomes dos filtros que cada usuário por perfil utilizou durante a execução da critica.
+
+CREATE TABLE [dimensao].[critica_filtro](
+	[sk_filtro] [int] IDENTITY(1,1) NOT NULL,
+	[id_config_filtro] [int] NOT NULL, --Id de configuração do ciclo
+	[id_ciclo_processo] [int] NOT NULL, --Id do ciclo de vendas
+	[nome_executor] [varchar](100) NULL, --Nome do executor de critica
+	[cod_hierarquia] [varchar](50) NOT NULL, --Chave da posição hierárquica
+	[nome_hierarquia] [varchar](100) NULL, --Nome da hierarquia (Gerente, Coordenador, Supervisor, etc.)
+	[nome_filtro] [varchar](50) NOT NULL, --Nome da coluna usada como filtro
+	[cod_filtro] [varchar](50) NOT NULL, --Chave do filtro
+	[CanalId] [int] NOT NULL, --Id do canal de vendas
+	[nivel] [int] NOT NULL, --Nivel da hierarquia
+	[valor_filtro] [varchar](15) NOT NULL, --Valor da coluna filtrada
+PRIMARY KEY CLUSTERED 
+(
+	[sk_filtro] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+
+--Query que popula tabela acima
+
+SELECT
+	ccf.Id [id_config_filtro],
+	ch.CicloProcessoId,
+	chf.Nome [nome_executor],
+	ch.CodigoHierarquia,
+ 	config.NomeHierarquia,
+	COALESCE(NomeChaveTabelaMaterial, NomeChaveTabelaCritica, TRIM(' ')) [nome_filtro],
+	ccf.Codigo [cod_filtro],
+	config.CanalId,
+	ch.NivelHierarquia,
+	chf.ValorFiltro
+FROM __43114_12024_CriticaHierarquia ch
+JOIN __43114_12024_CriticaHierarquiaFiltro chf
+ON
+	ch.CodigoHierarquia = chf.Codigo
+JOIN [DesdobramentoMetasConfig_BRF_V2].Auxiliar.CicloProcesso cp 
+ON
+	ch.CicloProcessoId = cp.Id
+JOIN [DesdobramentoMetasConfig_BRF_V2]..ConfiguracaoCriticaFiltro ccf
+ON 
+	chf.ConfiguracaoCriticaFiltroId = ccf.Id
+JOIN [DesdobramentoMetasConfig_BRF_V2]..ConfiguracaoHierarquia config
+ON
+	(cp.CanalId = config.CanalId AND ch.NivelHierarquia = config.NivelHierarquia)
+
+-----------------------------------------------------------------------------------------------
+
+CREATE TABLE [fatos].[total_filtro_critica](
+	[sk_filtro] [int] NOT NULL,
+	[id_ciclo_processo] [int] NOT NULL, --Id co ciclo de vendas
+	[id_config_filtro] [int] NOT NULL, --Id de configuração do filtro
+	[total] [int] NOT NULL --Frequência de cada feature selecionada como filtro
+) ON [PRIMARY]
+
+--Query que popula tabela acima
+
+SELECT
+	ccf.Id [id_config_filtro],
+	chf.CicloProcessoId [id_ciclo_processo],
+	[total_filtro] = COUNT_BIG(*)
+FROM [DesdobramentoMetasConfig_BRF_V2]..ConfiguracaoCriticaFiltro ccf
+JOIN __43114_12024_CriticaHierarquiaFiltro chf
+ON
+	ccf.Id = chf.ConfiguracaoCriticaFiltroId
+GROUP BY
+	ccf.Id,
+	chf.CicloProcessoId
+
+----------------------------------------------------------------------------------------
+
+CREATE TABLE [Scenario].[filtro_critica](
+	[CicloProcessoid] [int] NOT NULL, --Id do ciclo de vendas
+	[cod_hierarquia] [varchar](50) NOT NULL, --Chave dos perfis executores de critica
+	[nome_hierarquia] [varchar](100) NULL, --Nome da posição da hierarquia
+	[nome_filtro] [varchar](50) NOT NULL, --Nome do atributo filtrado
+	[canal] [nvarchar](50) NULL, --Nome do canal de vendas
+	[valor_filtro] [varchar](15) NOT NULL, --Valor da coluna filtrada
+	[total] [int] NOT NULL --Frequência de cada feature selecionada como filtro
+) ON [PRIMARY]
+
+--Query que popula tabela acima
+
+SELECT
+	d.id_ciclo_processo [CicloProcessoid],
+	d.cod_hierarquia,
+	d.nome_hierarquia,
+	d.nome_filtro,
+	c.nome [canal],
+	d.valor_filtro,
+	f.total
+FROM dimensao.critica_filtro d
+JOIN fatos.total_filtro_critica f
+ON
+	d.sk_filtro = f.sk_filtro
+JOIN [DesdobramentoMetasConfig_BRF_V2]..Canal c
+ON
+	d.CanalId = C.Id
+WHERE d.id_ciclo_processo = ?
+
+--------------------------------------------------------------------------------------
+--CENÁRIO 4: **Explicação - Meta Vendedor**
+--Descrição: Este cenário apresenta o fluxo de cálculo que o sistema executou, mostrando as médias, valores de consenso,
+--histórico, pesos, nome do cálculo, benefícios e/ou recompensas concedidas como reconhecimento pelo alcance de metas,
+--indicadores de performance, e obrigações atribuídas ao vendedor como metas desafiadoras e prazos apertados.
+
+CREATE TABLE [dimensao].[Historico_Critica](
+	[sk_hist_vend] [int] IDENTITY(1,1) NOT NULL,
+	[id_ciclo_processo] [int] NOT NULL, --Id do ciclo de vendas
+	[cod_vendedor] [varchar](50) NOT NULL, --Chave do vendedor
+	[cod_material] [varchar](50) NOT NULL, --Código do produto/material
+	[cod_cliente] [varchar](50) NOT NULL, --Código do cliente (restaurantes, mercados, atacadistas, padarias, etc.)
+	[vlr_meta] [float] NOT NULL, --Valor final calculado da meta
+	[FormulaMediaCalculo] [varchar](50) NULL, --Formula que dá origem às medidas
+	[dtInclusao] [datetime] NULL, --Data de inserção dos dados
+PRIMARY KEY CLUSTERED 
+(
+	[sk_hist_vend] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+
+--Query que popula tabela acima
+
+SELECT
+	cd.CicloProcessoId,
+	SUBSTRING(hc.Codigo, 1, CHARINDEX('_', hc.Codigo) -1) [cod_vendedor],
+	m.Codigo [cod_material],
+	REPLACE(SUBSTRING(hc.Codigo, CHARINDEX('_', hc.Codigo), 15), '_', TRIM(' ')) [cod_cliente],
+	mc.VolumeMeta,
+	hcr.FormulaMediaCalculo,
+	mc.CriadoEm
+FROM __43114_12024_HierarquiaCliente hc
+INNER JOIN __43114_12024_Cliente c
+ON
+	REPLACE(SUBSTRING(hc.Codigo, CHARINDEX('_', hc.Codigo), 15), '_', '') = c.Codigo
+INNER JOIN __43114_12024_CriticaDesdobramento cd
+ON
+	c.Id = cd.ClienteId
+JOIN __43114_12024_Material m
+ON
+	cd.MaterialId = m.Id
+JOIN __43114_12024_MetaConsenso mc
+ON
+	cd.MetaConsensoId = mc.Id
+JOIN __43114_12024_HistoricoCriticaRegional hcr
+ON
+	hcr.MaterialId = m.Id AND hcr.ClienteId = c.Id
+
+-----------------------------------------------------------------------------------------------------------------
+
+CREATE TABLE [fatos].[meta_vendedor](
+	[sk_hist_vend] [int] NOT NULL, --Chave estraingeira (não exclusiva)
+	[id_ciclo_processo] [int] NOT NULL, --Id do ciclo de vendas
+	[cod_sku] [varchar](50) NOT NULL, --Código do produto/material
+	[cod_vendedor] [varchar](50) NOT NULL, --Chave do vendedor
+	[meta_final] [float] NOT NULL, --Meta final calculada
+	[qtde_ult_mes] [float] NOT NULL, --Total vendido mês anterior
+	[qtde_ult_ano] [float] NOT NULL, --Total vendido no último ano
+	[MediaUlt3Meses] [float] NOT NULL, --Média acumulada em vendas nos últimos 3 meses
+	[ultima_critica] [float] NOT NULL, --Último reajuste efetuado de movimentações
+	[media_hist_calc] [float] NOT NULL,
+	[vlr_critica_1] [float] NULL, --Total de alocações efetivadas pelo nível 1 da hierarquia
+	[vlr_critica_2] [float] NULL, --Total de alocações efetivadas pelo nível 2 da hierarquia
+	[vlr_critica_3] [float] NULL, --Total de alocações efetivadas pelo nível 3 da hierarquia
+	[vlr_critica_5] [float] NULL, --Total de alocações efetivadas pelo nível 4 da hierarquia
+	[ValorRepresentatividade] [float] NULL,
+	[ValorBalanceamento] [float] NULL
+) ON [PRIMARY]
+
+--Query que popula tabela acima
+
+SELECT
+	hcr.CicloProcessoId,
+	temp.cod_sku,
+	temp.cod_vendedor,
+	temp.vlr_meta [meta_final],
+	hcr.VolumeUltimoMes [QtdUltimoMes],
+	hcr.VolumeUltimoAno [QtdUltimoAno],
+	hcr.MediaUltimos3Meses [MediaUltimos3M],
+	hcr.UltimoValorCritica [UltimaCritica],
+	hcr.MediaHistoricoCalculo [MediaHistoricoCalculo],
+	ISNULL(MAX(vlr_critica_1), 0) [vlr_critica_1],
+	ISNULL(MAX(vlr_critica_2), 0) [vlr_critica_2],
+	ISNULL(MAX(vlr_critica_3), 0) [vlr_critica_3],
+	ISNULL(MAX(vlr_critica_5), 0) [vlr_critica_5],
+	SUM(VolumeRepresentatividade) [ValorRepresentatividade],
+	SUM(VolumeBalanceamento) [ValorBalanceamento]
+FROM __43114_12024_HistoricoCriticaRegional hcr
+INNER JOIN (
+	SELECT	
+		dhm.id_meta,
+		SUBSTRING(hc.Codigo, 1, CHARINDEX('_', hc.Codigo) -1) [cod_vendedor],
+		COALESCE(CONVERT(bigint, m.Id), 0, 'Error') [MaterialId],
+		dhm.cod_sku,
+		dhm.cod_cliente,
+		dhm.vlr_meta
+	FROM dimensao.Desdobramento_Hierarquia_Meta dhm
+	JOIN __43114_12024_HierarquiaCliente hc
+	ON
+		dhm.cod_cliente = REPLACE(SUBSTRING(hc.Codigo, CHARINDEX('_', hc.Codigo), 8), '_', '')
+	JOIN __43114_12024_Material m
+	ON
+		dhm.cod_sku = m.Codigo
+) [temp]
+	ON hcr.MaterialId = temp.MaterialId AND hcr.CodigoCliente = temp.cod_cliente
+JOIN (
+	SELECT	
+		dm.MetaConsensoId [id_meta],
+		f.vlr_critica_1,
+		f.vlr_critica_2,
+		f.vlr_critica_3,
+		f.vlr_critica_5,
+		dm.VolumeRepresentatividade,
+		dm.VolumeBalanceamento
+	FROM __43114_12024_DesdobramentoMeta dm
+	JOIN fatos.meta_criticada f
+	ON
+		dm.MetaConsensoId = f.id_meta
+) dm 
+	ON
+		temp.id_meta = dm.id_meta
+GROUP BY
+	hcr.CicloProcessoId,
+	hcr.MediaHistoricoCalculo,
+	temp.cod_sku,
+	temp.cod_vendedor,
+	temp.vlr_meta,
+	hcr.VolumeUltimoMes,
+	hcr.VolumeUltimoAno,
+	hcr.MediaUltimos3Meses,
+	hcr.UltimoValorCritica,
+	hcr.MediaHistoricoCalculo
