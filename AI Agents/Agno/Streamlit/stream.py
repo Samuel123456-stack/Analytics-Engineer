@@ -4,7 +4,7 @@ from pprint import pprint
 import streamlit as st
 
 AGENT_ID = 'agente_pdf'
-ENDPOINT = f'http://localhost:7777//agents/{AGENT_ID}/runs'
+ENDPOINT = f'https://financial-ai-assistant-2sq8.onrender.com/agents/{AGENT_ID}/runs'
 
 def get_response_stream(message:str):
     response = requests.post(
